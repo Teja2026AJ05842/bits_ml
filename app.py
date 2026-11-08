@@ -10,7 +10,7 @@ st.set_page_config(page_title="Frog Call Species Classifier", layout="wide")
 
 TARGET = "Species"
 
-model_files = {
+saved_classifiers = {
     "Logistic Regression": "model/logistic_regression.pkl",
     "Decision Tree": "model/decision_tree.pkl",
     "KNN": "model/knn.pkl",
@@ -34,11 +34,11 @@ species_info = {
 
 
 @st.cache_resource
-def load_model(path):
+def read_pickle(path):
     return joblib.load(path)
 
 
-def get_metrics(y_true, pred, prob, classes):
+def calc_scores(y_true, pred, prob, classes):
     return {
         "Accuracy": accuracy_score(y_true, pred),
         "AUC": roc_auc_score(y_true, prob, multi_class="ovr", average="macro", labels=classes),
@@ -51,9 +51,9 @@ def get_metrics(y_true, pred, prob, classes):
 
 # ---------- sidebar: inputs ----------
 st.sidebar.header("Settings")
-uploaded_file = st.sidebar.file_uploader("Upload test data (CSV)", type="csv")
+csv_file = st.sidebar.file_uploader("Upload test data (CSV)", type="csv")
 use_default = st.sidebar.checkbox("Or use the test_data.csv from the repo", value=False)
-model_name = st.sidebar.selectbox("Choose a classifier", list(model_files.keys()))
+chosen_clf = st.sidebar.selectbox("Choose a classifier", list(saved_classifiers.keys()))
 st.sidebar.caption("Please use test_data.csv from the github repo. It contains 22 MFCC columns (Features) "
                    "and the Species (Target) column.")
 
@@ -66,9 +66,9 @@ with st.expander("Species / class labels"):
     for k, v in species_info.items():
         st.write(f"**{k}** - {v}")
 
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
-    st.caption("Using uploaded file: " + uploaded_file.name)
+if csv_file is not None:
+    df = pd.read_csv(csv_file)
+    st.caption("Using uploaded file: " + csv_file.name)
 elif use_default:
     df = pd.read_csv("test_data.csv")
     st.caption("Using test_data.csv from the repo (1799 rows)")
@@ -96,8 +96,8 @@ with c2:
     st.bar_chart(y.value_counts())
 
 # load saved scaler + model (no training here)
-scaler = load_model("model/scaler.pkl")
-model = load_model(model_files[model_name])
+scaler = read_pickle("model/scaler.pkl")
+model = read_pickle(saved_classifiers[chosen_clf])
 
 X_scaled = scaler.transform(X)
 y_pred = model.predict(X_scaled)
@@ -105,12 +105,12 @@ y_prob = model.predict_proba(X_scaled)
 classes = model.classes_
 
 st.divider()
-st.header(f"Results: {model_name}")
+st.header(f"Results: {chosen_clf}")
 
 # c. metrics
-res = get_metrics(y, y_pred, y_prob, classes)
+scores = calc_scores(y, y_pred, y_prob, classes)
 cols = st.columns(6)
-for col, (metric, value) in zip(cols, res.items()):
+for col, (metric, value) in zip(cols, scores.items()):
     col.metric(metric, f"{value:.4f}")
 st.caption("Precision, Recall and F1 are macro averaged over the 10 species. AUC is one-vs-rest (macro).")
 
@@ -139,7 +139,7 @@ with tab3:
     st.bar_chart(recall_per_class.sort_values())
     worst = recall_per_class.idxmin()
     best = recall_per_class.idxmax()
-    st.write(f"Easiest species for {model_name}: **{best}** ({recall_per_class[best]:.0%} recall). "
+    st.write(f"Easiest species for {chosen_clf}: **{best}** ({recall_per_class[best]:.0%} recall). "
              f"Hardest: **{worst}** ({recall_per_class[worst]:.0%} recall).")
 
 with tab4:
@@ -152,20 +152,20 @@ with tab4:
         st.dataframe(pred_df)
     st.write(f"Wrong predictions: {(~pred_df['Correct']).sum()} out of {len(pred_df)}")
     st.download_button("Download predictions", pred_df.to_csv(index=False),
-                       file_name=f"predictions_{model_name.replace(' ', '_').lower()}.csv")
+                       file_name=f"predictions_{chosen_clf.replace(' ', '_').lower()}.csv")
 
 # all 5 models on the uploaded data
 st.divider()
 st.header("All 5 models on this file")
 rows = []
-for name, path in model_files.items():
-    m = load_model(path)
+for name, path in saved_classifiers.items():
+    m = read_pickle(path)
     pred = m.predict(X_scaled)
     prob = m.predict_proba(X_scaled)
-    rows.append({"ML Model Name": name, **get_metrics(y, pred, prob, m.classes_)})
-comp = pd.DataFrame(rows).set_index("ML Model Name").round(4)
+    rows.append({"ML Model Name": name, **calc_scores(y, pred, prob, m.classes_)})
+all_scores = pd.DataFrame(rows).set_index("ML Model Name").round(4)
 # dark green + white text so it is readable in both light and dark theme
-st.dataframe(comp.style.highlight_max(axis=0, props="background-color: #2e7d32; color: white; font-weight: bold")
+st.dataframe(all_scores.style.highlight_max(axis=0, props="background-color: #2e7d32; color: white; font-weight: bold")
              .format("{:.4f}"))
-top = comp["F1"].idxmax()
-st.write(f"Best model by F1 score on this file: {top} (F1 = {comp.loc[top, 'F1']:.4f})")
+top = all_scores["F1"].idxmax()
+st.write(f"Best model by F1 score on this file: {top} (F1 = {all_scores.loc[top, 'F1']:.4f})")
