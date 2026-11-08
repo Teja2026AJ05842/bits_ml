@@ -52,6 +52,7 @@ def get_metrics(y_true, pred, prob, classes):
 # ---------- sidebar: inputs ----------
 st.sidebar.header("Settings")
 uploaded_file = st.sidebar.file_uploader("Upload test data (CSV)", type="csv")
+use_default = st.sidebar.checkbox("Or use the test_data.csv from the repo", value=False)
 model_name = st.sidebar.selectbox("Choose a classifier", list(model_files.keys()))
 st.sidebar.caption("Please use test_data.csv from the github repo. It contains 22 MFCC columns (Features) "
                    "and the Species (Target) column.")
@@ -65,11 +66,15 @@ with st.expander("Species / class labels"):
     for k, v in species_info.items():
         st.write(f"**{k}** - {v}")
 
-if uploaded_file is None:
-    st.warning("Upload the test CSV from the sidebar to start.")
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
+    st.caption("Using uploaded file: " + uploaded_file.name)
+elif use_default:
+    df = pd.read_csv("test_data.csv")
+    st.caption("Using test_data.csv from the repo (1799 rows)")
+else:
+    st.warning("Upload the test CSV from the sidebar, or tick the checkbox to use the default test_data.csv.")
     st.stop()
-
-df = pd.read_csv(uploaded_file)
 
 if TARGET not in df.columns:
     st.error(f"{TARGET} column not found in the csv")
