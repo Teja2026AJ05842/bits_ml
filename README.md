@@ -39,6 +39,8 @@ Train/test split: 75/25, stratified on Species, random_state = 737. This gives 5
 
 https://github.com/Teja2026AJ05842/bits_ml/tree/ml_assignment2
 
+**Note:** the assignment code is on the **`ml_assignment2`** branch of the repository (the `main` branch is kept in sync with it). The Streamlit app is also deployed from this branch.
+
 **Live Streamlit App:** https://<your-app>.streamlit.app
 
 Repository files:
