@@ -37,7 +37,7 @@ Train/test split: 75/25, stratified on Species, random_state = 737. This gives 5
 
 ## c. Github Repository Link
 
-https://github.com/<your-username>/<repo-name>
+https://github.com/Teja2026AJ05842/bits_ml/tree/ml_assignment2
 
 **Live Streamlit App:** https://<your-app>.streamlit.app
 
@@ -48,6 +48,7 @@ project-folder/
 |-- app.py                 (streamlit app)
 |-- train_models.py        (training code for all 5 models)
 |-- requirements.txt
+|-- .streamlit/config.toml (green theme for the app)
 |-- README.md
 |-- test_data.csv
 |-- data/

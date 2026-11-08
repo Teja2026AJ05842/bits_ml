@@ -116,6 +116,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["Confusion Matrix", "Classification Report",
 with tab1:
     cm = confusion_matrix(y, y_pred, labels=classes)
     fig, ax = plt.subplots(figsize=(9, 7))
+    fig.patch.set_facecolor("#eef6ec")  # same as page background
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=classes, yticklabels=classes, ax=ax)
     ax.set_xlabel("Predicted species")
     ax.set_ylabel("Actual species")
