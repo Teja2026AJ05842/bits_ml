@@ -49,18 +49,26 @@ def calc_scores(y_true, pred, prob, classes):
     }
 
 
-# ---------- sidebar: inputs ----------
-st.sidebar.header("Settings")
-csv_file = st.sidebar.file_uploader("Upload test data (CSV)", type="csv")
-use_default = st.sidebar.checkbox("Or use the test_data.csv from the repo", value=False)
-chosen_clf = st.sidebar.selectbox("Choose a classifier", list(saved_classifiers.keys()))
-st.sidebar.caption("Please use test_data.csv from the github repo. It contains 22 MFCC columns (Features) "
-                   "and the Species (Target) column.")
+# family of each species, taken from the text above (part before " / ")
+species_family = {k: v.split(" / ")[0] for k, v in species_info.items()}
 
 # ---------- header ----------
 st.title("Frog Call Species Classifier")
 st.write("2026AJ05842 | Sai Teja Koneru | ML Assignment 2 | Dataset: Kaggle Anuran Calls (MFCCs) - "
          "7195 frog call syllables, 22 MFCC audio features, 10 species")
+
+# ---------- inputs (top of the page instead of sidebar) ----------
+in1, in2 = st.columns([2, 1])
+with in1:
+    csv_file = st.file_uploader("Upload test data (CSV)", type="csv")
+with in2:
+    st.write("")
+    st.write("")
+    # button only fires once per click, so remember the choice in session_state
+    if st.button("Autofill Test Data"):
+        st.session_state["use_default"] = True
+    use_default = st.session_state.get("use_default", False)
+st.caption("The test CSV must have the 22 MFCC columns (MFCC_1 ... MFCC_22) and the Species column.")
 
 with st.expander("Species / class labels"):
     for k, v in species_info.items():
@@ -73,7 +81,7 @@ elif use_default:
     df = pd.read_csv("test_data.csv")
     st.caption("Using test_data.csv from the repo (1799 rows)")
 else:
-    st.warning("Upload the test CSV from the sidebar, or tick the checkbox to use the default test_data.csv.")
+    st.warning("Upload the test CSV above, or click 'Autofill Test Data' to use the test_data.csv from the repo.")
     st.stop()
 
 if TARGET not in df.columns:
@@ -95,6 +103,13 @@ with c2:
     st.subheader("Species counts")
     st.bar_chart(y.value_counts())
 
+st.divider()
+
+# model dropdown, placed right above the results it controls
+sel_col, _ = st.columns([1, 2])
+with sel_col:
+    chosen_clf = st.selectbox("Choose a classifier", list(saved_classifiers.keys()))
+
 # load saved scaler + model (no training here)
 scaler = read_pickle("model/scaler.pkl")
 model = read_pickle(saved_classifiers[chosen_clf])
@@ -104,7 +119,6 @@ y_pred = model.predict(X_scaled)
 y_prob = model.predict_proba(X_scaled)
 classes = model.classes_
 
-st.divider()
 st.header(f"Results: {chosen_clf}")
 
 # c. metrics
@@ -114,8 +128,8 @@ for col, (metric, value) in zip(cols, scores.items()):
     col.metric(metric, f"{value:.4f}")
 st.caption("Precision, Recall and F1 are macro averaged over the 10 species. AUC is one-vs-rest (macro).")
 
-tab1, tab2, tab3, tab4 = st.tabs(["Confusion Matrix", "Classification Report",
-                                  "Per-species Recall", "Predictions"])
+tab1, tab2, tab3, tab5, tab4 = st.tabs(["Confusion Matrix", "Classification Report",
+                                        "Per-species Recall", "Family Check", "Predictions"])
 
 # d. confusion matrix and classification report
 with tab1:
@@ -142,6 +156,28 @@ with tab3:
     st.write(f"Easiest species for {chosen_clf}: **{best}** ({recall_per_class[best]:.0%} recall). "
              f"Hardest: **{worst}** ({recall_per_class[worst]:.0%} recall).")
 
+with tab5:
+    # each species belongs to one of 4 families. check if the family is still right when the species is wrong
+    true_fam = y.map(species_family)
+    pred_fam = pd.Series(y_pred, index=y.index).map(species_family)
+    wrong = y != y_pred
+    f1c, f2c, f3c = st.columns(3)
+    f1c.metric("Species accuracy", f"{(~wrong).mean():.2%}")
+    f2c.metric("Family accuracy", f"{(true_fam == pred_fam).mean():.2%}")
+    if wrong.sum() > 0:
+        same_fam = (true_fam[wrong] == pred_fam[wrong]).mean()
+        f3c.metric("Wrong species but right family", f"{same_fam:.0%}")
+        if same_fam >= 0.5:
+            note = f"so {chosen_clf} mostly mixes up related species."
+        else:
+            note = f"so {chosen_clf} often confuses species from different families."
+        st.write(f"Out of {wrong.sum()} wrong predictions, {(true_fam[wrong] == pred_fam[wrong]).sum()} "
+                 f"are still in the correct family, {note}")
+    else:
+        f3c.metric("Wrong species but right family", "-")
+    st.write("Family level confusion (rows = actual family, columns = predicted family):")
+    st.dataframe(pd.crosstab(true_fam, pred_fam, rownames=["Actual"], colnames=["Predicted"]))
+
 with tab4:
     pred_df = pd.DataFrame({"Actual": y, "Predicted": y_pred})
     pred_df["Correct"] = pred_df["Actual"] == pred_df["Predicted"]
@@ -153,6 +189,40 @@ with tab4:
     st.write(f"Wrong predictions: {(~pred_df['Correct']).sum()} out of {len(pred_df)}")
     st.download_button("Download predictions", pred_df.to_csv(index=False),
                        file_name=f"predictions_{chosen_clf.replace(' ', '_').lower()}.csv")
+
+# ---------- call fingerprint: average MFCC values per species ----------
+st.divider()
+st.header("Call fingerprint (average MFCCs per species)")
+st.write("Each line is the average of the 22 MFCC values for one species. Species whose lines are close "
+         "together sound similar, so they are harder to tell apart.")
+avg_mfcc = X.groupby(y).mean().T
+avg_mfcc.index = range(1, len(avg_mfcc) + 1)   # 1..22 so the x axis stays in order
+avg_mfcc.index.name = "MFCC number"
+default_pick = [s for s in ["AdenomeraAndre", "AdenomeraHylaedactylus", "HylaMinuta"] if s in avg_mfcc.columns]
+pick = st.multiselect("Species to compare", list(avg_mfcc.columns), default=default_pick)
+if pick:
+    st.line_chart(avg_mfcc[pick])
+else:
+    st.info("Select at least one species to see its fingerprint.")
+
+# ---------- check one call with all 5 models ----------
+st.divider()
+st.header("Check one call")
+if "call_idx" not in st.session_state or st.session_state["call_idx"] >= len(df):
+    st.session_state["call_idx"] = 0
+if st.button("Pick a random call"):
+    st.session_state["call_idx"] = int(pd.Series(range(len(df))).sample(1).iloc[0])
+idx = st.session_state["call_idx"]
+true_species = y.iloc[idx]
+st.write(f"Row {idx} of the test file | actual species: **{true_species}** ({species_family.get(true_species, '?')})")
+one_call = []
+for name, path in saved_classifiers.items():
+    m = read_pickle(path)
+    guess = m.predict(X_scaled[idx:idx + 1])[0]
+    conf = m.predict_proba(X_scaled[idx:idx + 1]).max()
+    one_call.append({"Model": name, "Predicted species": guess, "Confidence": f"{conf:.0%}",
+                     "Correct": "✔" if guess == true_species else "✘"})
+st.dataframe(pd.DataFrame(one_call), hide_index=True)
 
 # all 5 models on the uploaded data
 st.divider()
